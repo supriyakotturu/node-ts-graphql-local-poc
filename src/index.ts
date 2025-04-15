@@ -1,58 +1,48 @@
-import { ApolloServer } from '@apollo/server';
-import { startStandaloneServer } from '@apollo/server/standalone';
+import { ApolloServer } from "@apollo/server";
+import { startStandaloneServer } from "@apollo/server/standalone";
 
-// A schema is a collection of type definitions (hence "typeDefs")
-// that together define the "shape" of queries that are executed against
-// your data.
-const typeDefs = `#graphql
-  # Comments in GraphQL strings (such as this one) start with the hash (#) symbol.
+import { readFileSync } from "fs";
+import { fileURLToPath } from 'url';
+import {dirname, resolve} from "path";
+import { gql } from "graphql-tag";
+import { resolvers } from "./resolvers"; 
+import { ListingAPI } from "./datasources/listing-api";
+import { PlanetsAPI } from "./datasources/planets-api";
 
-  # This "Book" type defines the queryable fields for every book in our data source.
-  type Book {
-    title: String
-    author: String
-  }
+ 
 
-  # The "Query" type is special: it lists all of the available queries that
-  # clients can execute, along with the return type for each. In this
-  # case, the "books" query returns an array of zero or more Books (defined above).
-  type Query {
-    books: [Book]
-  }
-`;
+// Get the current directory
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
-const books = [
-    {
-      title: 'The Awakening',
-      author: 'Kate Chopin',
+const typeDefs = gql(
+    readFileSync(resolve(__dirname, "schema.graphql"), {
+      encoding: "utf-8",
+    })
+);
+
+async function startApolloServer() {
+  const server = new ApolloServer({ typeDefs, resolvers  });
+  const {url} = await startStandaloneServer(server, {
+    context: async() => {
+      const {cache} = server
+      return {
+        dataSources: {
+          listingAPI: new ListingAPI({cache}),
+          planetAPI: new PlanetsAPI({cache})
+        }
+      }
     },
-    {
-      title: 'City of Glass',
-      author: 'Paul Auster',
-    },
-  ];
+    listen: { port: 4000 }
+    })
+  console.log(`server is running. URL: ${url} `)
 
-// Resolvers define how to fetch the types defined in your schema.
-// This resolver retrieves books from the "books" array above.
-const resolvers = {
-    Query: {
-      books: () => books,
-    },
-  };
+  // Add this temporarily to debug
+console.log('Environment variables:', {
+  API_URL: process.env.API_URL,
+  NODE_ENV: process.env.NODE_ENV
+});
 
-// The ApolloServer constructor requires two parameters: your schema
-// definition and your set of resolvers.
-const server = new ApolloServer({
-    typeDefs,
-    resolvers,
-  });
-  
-  // Passing an ApolloServer instance to the `startStandaloneServer` function:
-  //  1. creates an Express app
-  //  2. installs your ApolloServer instance as middleware
-  //  3. prepares your app to handle incoming requests
-  const { url } = await startStandaloneServer(server, {
-    listen: { port: 4000 },
-  });
-  
-  console.log(`🚀  Server ready at: ${url}`);
+}
+
+startApolloServer()
